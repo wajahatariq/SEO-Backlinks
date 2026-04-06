@@ -4,6 +4,10 @@ tools.py — DataForSEO API helpers.
 All credentials are read from environment variables:
   DATAFORSEO_LOGIN
   DATAFORSEO_PASSWORD
+
+Optional proxy (required on Vercel — set a static-IP proxy to satisfy
+DataForSEO's IP whitelist):
+  PROXY_URL  e.g. http://username:password@proxy.webshare.io:port
 """
 
 import os
@@ -26,6 +30,18 @@ def _get_auth() -> tuple[str, str]:
             "DATAFORSEO_LOGIN and DATAFORSEO_PASSWORD must be set in the environment."
         )
     return login, password
+
+
+def _get_client() -> httpx.Client:
+    """
+    Return an httpx Client, routing through PROXY_URL when set.
+    This ensures requests leave from the proxy's fixed IP, satisfying
+    DataForSEO's IP whitelist when deployed on Vercel.
+    """
+    proxy_url = os.environ.get("PROXY_URL")
+    if proxy_url:
+        return httpx.Client(proxy=proxy_url, timeout=30.0)
+    return httpx.Client(timeout=30.0)
 
 
 def fetch_referring_domains(target: str, limit: int = 100) -> dict[str, Any]:
@@ -51,17 +67,16 @@ def fetch_referring_domains(target: str, limit: int = 100) -> dict[str, Any]:
             "limit": limit,
             "order_by": ["rank,desc"],
             "filters": [
-                ["broken_pages", "=", 0],  # Only domains that aren't broken
+                ["broken_pages", "=", 0],
             ],
         }
     ]
 
-    with httpx.Client() as client:
+    with _get_client() as client:
         response = client.post(
             f"{DATAFORSEO_BASE_URL}/backlinks/referring_domains/live",
-            auth=auth,  # httpx handles HTTP Basic Auth automatically
+            auth=auth,
             json=payload,
-            timeout=30.0,
         )
         response.raise_for_status()
 
