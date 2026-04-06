@@ -1,6 +1,8 @@
 import os
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, field_validator
 from dotenv import load_dotenv
 
@@ -47,6 +49,14 @@ class FindLinksResponse(BaseModel):
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
+
+# Serve the frontend at /
+app.mount("/static", StaticFiles(directory="frontend"), name="static")
+
+@app.get("/", include_in_schema=False)
+async def serve_frontend() -> FileResponse:
+    return FileResponse("frontend/index.html")
+
 
 @app.get("/health", tags=["Health"])
 async def health_check() -> dict:
