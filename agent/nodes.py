@@ -2,23 +2,22 @@
 agent/nodes.py — The three processing nodes of the SEO backlink agent.
 
 Node execution order:
-  analyze_competitors → fetch_backlink_stats → generate_opportunities
+  analyze_competitors → enrich_competitors → generate_opportunities
 """
 
 import json
 import os
-import time
 from typing import Any
 
 import litellm
 from dotenv import load_dotenv
 
 from agent.state import AgentState
-from tools import fetch_backlink_summary
 
 load_dotenv()
 
 _MODEL = os.environ.get("LITELLM_MODEL", "gpt-4o-mini")
+
 
 # ---------------------------------------------------------------------------
 # Node 1 — Analyze Competitors
@@ -26,7 +25,7 @@ _MODEL = os.environ.get("LITELLM_MODEL", "gpt-4o-mini")
 
 def analyze_competitors(state: AgentState) -> AgentState:
     """
-    Use the LLM to identify the top 5 organic competitors for the target domain.
+    Use the LLM to identify the top 3 organic competitors for the target domain.
 
     Writes:  state["competitors"]
     """
@@ -52,32 +51,52 @@ No explanation, just the array."""
 
 
 # ---------------------------------------------------------------------------
-# Node 2 — Fetch Backlink Stats
+# Node 2 — Enrich Competitors (LLM-powered, no external API)
 # ---------------------------------------------------------------------------
 
 def fetch_backlink_stats(state: AgentState) -> AgentState:
     """
-    Fetch backlink profile summary for each competitor via RapidAPI.
+    Use the LLM to describe the backlink profile of each competitor
+    (niche, authority, typical link sources) without any external API call.
 
-    Writes:  state["raw_referring_domains"]  (list of competitor profile dicts)
+    Writes:  state["raw_referring_domains"]
     """
     if state.get("error"):
         return state
 
     competitors = state.get("competitors", [])
-    profiles: list[dict[str, Any]] = []
+    target = state["target_domain"]
 
-    for i, domain in enumerate(competitors):
-        if i > 0:
-            time.sleep(2)  # Respect RapidAPI free tier rate limit
-        try:
-            summary = fetch_backlink_summary(domain)
-            profiles.append(summary)
-        except Exception as exc:
-            # Surface the first real error so it appears in the UI
-            if not profiles:
-                return {**state, "error": f"Backlink API failed for '{domain}': {exc}"}
-            profiles.append({"domain": domain, "error": str(exc)})
+    prompt = f"""You are an SEO data analyst. For each of the following competitor domains,
+provide a brief backlink profile summary based on your knowledge.
+
+Target site: '{target}'
+Competitors: {json.dumps(competitors)}
+
+Return ONLY a valid JSON array. Each object must have:
+- "domain": the competitor domain
+- "da": estimated domain authority 1-100 (integer)
+- "ref_domains": estimated number of referring domains (integer)
+- "total_backlinks": estimated total backlinks (integer)
+- "niche": one phrase describing their primary niche
+- "top_link_sources": array of 3 strings — types of sites that typically link to them
+
+No markdown, no explanation — just the JSON array."""
+
+    try:
+        response = litellm.completion(
+            model=_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.3,
+        )
+        raw = response.choices[0].message.content.strip()
+        if raw.startswith("```"):
+            raw = raw.split("```")[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+        profiles: list[dict[str, Any]] = json.loads(raw.strip())
+    except Exception as exc:
+        return {**state, "error": f"enrich_competitors failed: {exc}"}
 
     return {**state, "raw_referring_domains": profiles, "error": None}
 
@@ -88,36 +107,35 @@ def fetch_backlink_stats(state: AgentState) -> AgentState:
 
 def filter_and_rank(state: AgentState) -> AgentState:
     """
-    Use the LLM to analyse competitor backlink profiles and generate
-    a ranked list of concrete link-building opportunities for the target.
+    Use the LLM to generate a ranked list of concrete link-building
+    opportunities based on competitor profiles.
 
     Writes:  state["opportunities"]
     """
     if state.get("error"):
         return state
 
-    profiles = [p for p in state.get("raw_referring_domains", []) if "error" not in p]
+    profiles = state.get("raw_referring_domains", [])
     target = state["target_domain"]
 
     if not profiles:
-        return {**state, "error": "No competitor backlink data could be retrieved."}
+        return {**state, "error": "Could not build competitor profiles."}
 
     prompt = f"""You are a senior SEO link-building strategist. The client's website is '{target}'.
 
-Below are the backlink profiles of their top competitors (domain authority, referring domains, top anchor texts, monthly trends):
-
+Here are the backlink profiles of their top competitors:
 {json.dumps(profiles, indent=2)}
 
-Using this competitive intelligence, generate exactly 15 high-quality, actionable link-building opportunities for '{target}'.
-
-Each opportunity must be a SPECIFIC, REAL website or type of website that the client can realistically get a link from, based on what is working for their competitors.
+Generate exactly 15 high-quality, actionable link-building opportunities for '{target}'.
+Each must be a SPECIFIC, REAL website the client can realistically get a backlink from,
+inspired by what works for these competitors.
 
 Return ONLY a valid JSON array. Each object must have these exact keys:
-- "domain": a specific website or platform (e.g. "producthunt.com", "designmodo.com")
-- "rank": estimated domain authority score 1-100 (integer)
+- "domain": specific website (e.g. "producthunt.com")
+- "rank": estimated domain authority 1-100 (integer)
 - "backlinks_num": estimated monthly referral visits potential (integer)
 - "source_competitor": which competitor inspired this opportunity
-- "reason": one clear sentence on how to get the link and why it fits '{target}'
+- "reason": one clear sentence — how to get the link and why it fits '{target}'
 
 No markdown, no explanation — just the JSON array."""
 
@@ -128,7 +146,6 @@ No markdown, no explanation — just the JSON array."""
             temperature=0.4,
         )
         raw_output = response.choices[0].message.content.strip()
-        # Strip markdown fences if model adds them anyway
         if raw_output.startswith("```"):
             raw_output = raw_output.split("```")[1]
             if raw_output.startswith("json"):
