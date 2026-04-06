@@ -71,6 +71,9 @@ def fetch_backlink_stats(state: AgentState) -> AgentState:
             summary = fetch_backlink_summary(domain)
             profiles.append(summary)
         except Exception as exc:
+            # Surface the first real error so it appears in the UI
+            if not profiles:
+                return {**state, "error": f"Backlink API failed for '{domain}': {exc}"}
             profiles.append({"domain": domain, "error": str(exc)})
 
     return {**state, "raw_referring_domains": profiles, "error": None}
