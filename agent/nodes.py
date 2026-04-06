@@ -7,6 +7,7 @@ Node execution order:
 
 import json
 import os
+import time
 from typing import Any
 
 import litellm
@@ -31,7 +32,7 @@ def analyze_competitors(state: AgentState) -> AgentState:
     """
     target = state["target_domain"]
 
-    prompt = f"""You are an SEO expert. List the top 5 organic search competitors
+    prompt = f"""You are an SEO expert. List the top 3 organic search competitors
 for the domain '{target}'. Return ONLY a JSON array of domain strings.
 Example: ["competitor1.com", "competitor2.com"]
 No explanation, just the array."""
@@ -66,7 +67,9 @@ def fetch_backlink_stats(state: AgentState) -> AgentState:
     competitors = state.get("competitors", [])
     profiles: list[dict[str, Any]] = []
 
-    for domain in competitors:
+    for i, domain in enumerate(competitors):
+        if i > 0:
+            time.sleep(2)  # Respect RapidAPI free tier rate limit
         try:
             summary = fetch_backlink_summary(domain)
             profiles.append(summary)
