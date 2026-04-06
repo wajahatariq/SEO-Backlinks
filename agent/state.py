@@ -21,5 +21,8 @@ class AgentState(TypedDict):
     # --- Node: filter_and_rank ---
     opportunities: list[dict[str, Any]]  # Final filtered & ranked link opportunities
 
+    # --- Internal context (not returned to frontend) ---
+    _target_content: str        # Raw text extracted from the target website by Tavily
+
     # --- Control ---
     error: str | None           # Populated if any node fails; halts the graph

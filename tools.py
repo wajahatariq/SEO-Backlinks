@@ -1,65 +1,45 @@
 """
-tools.py — Backlink data helpers using RapidAPI (SEO API - Get Backlinks).
+tools.py — Web intelligence helpers powered by Tavily.
 
-Credentials read from environment variables:
-  RAPIDAPI_KEY
+Environment variables required:
+  TAVILY_API_KEY
 """
 
 import os
 from typing import Any
 
-import httpx
+from tavily import TavilyClient
 from dotenv import load_dotenv
 
 load_dotenv()
 
-_RAPIDAPI_HOST = "seo-api-get-backlinks.p.rapidapi.com"
-_BASE_URL = f"https://{_RAPIDAPI_HOST}"
 
-
-def _get_headers() -> dict[str, str]:
-    key = os.environ.get("RAPIDAPI_KEY")
+def _client() -> TavilyClient:
+    key = os.environ.get("TAVILY_API_KEY")
     if not key:
-        raise EnvironmentError("RAPIDAPI_KEY must be set in the environment.")
-    return {
-        "x-rapidapi-key": key,
-        "x-rapidapi-host": _RAPIDAPI_HOST,
-    }
+        raise EnvironmentError("TAVILY_API_KEY must be set in the environment.")
+    return TavilyClient(api_key=key)
 
 
-def fetch_backlink_summary(domain: str) -> dict[str, Any]:
+def search_web(query: str, max_results: int = 5) -> list[dict[str, Any]]:
     """
-    Fetch backlink summary stats for *domain* via RapidAPI.
-
-    Returns a dict with keys:
-      - domain        : the queried domain
-      - da            : domain authority (latest)
-      - ref_domains   : number of referring domains (latest)
-      - total_backlinks: total backlink count (latest)
-      - top_anchors   : list of top anchor text objects
-      - monthly_trend : last 6 months of backlink/refdomain counts
-
-    Raises:
-      EnvironmentError: if RAPIDAPI_KEY is not set.
-      httpx.HTTPStatusError: on non-2xx responses.
+    Run a real-time web search and return a list of result dicts.
+    Each result has: title, url, content (snippet).
     """
-    with httpx.Client(timeout=20.0) as client:
-        response = client.get(
-            f"{_BASE_URL}/backlinks.php",
-            headers=_get_headers(),
-            params={"domain": domain},
-        )
-        response.raise_for_status()
+    results = _client().search(query, max_results=max_results)
+    return results.get("results", [])
 
-    data = response.json()
-    overtime = data.get("overtime", [])
-    latest = overtime[0] if overtime else {}
 
-    return {
-        "domain": domain,
-        "da": latest.get("da", 0),
-        "ref_domains": latest.get("refdomains", 0),
-        "total_backlinks": latest.get("backlinks", 0),
-        "top_anchors": data.get("anchors", [])[:10],
-        "monthly_trend": overtime[:6],
-    }
+def extract_website(url: str) -> str:
+    """
+    Extract and return the main text content from *url*.
+    Returns an empty string if extraction fails.
+    """
+    try:
+        result = _client().extract(urls=[url])
+        pages = result.get("results", [])
+        if pages:
+            return pages[0].get("raw_content", "")[:3000]
+    except Exception:
+        pass
+    return ""

@@ -80,6 +80,7 @@ async def find_links(body: FindLinksRequest) -> FindLinksResponse:
         "competitors": [],
         "raw_referring_domains": [],
         "opportunities": [],
+        "_target_content": "",
         "error": None,
     }
 

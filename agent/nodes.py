@@ -2,7 +2,12 @@
 agent/nodes.py — The three processing nodes of the SEO backlink agent.
 
 Node execution order:
-  analyze_competitors → enrich_competitors → generate_opportunities
+  analyze_competitors → enrich_with_tavily → generate_opportunities
+
+Tavily provides real-time web data at every stage:
+  - Node 1: searches the web to find actual competitors
+  - Node 2: extracts the target site + searches competitor link profiles
+  - Node 3: LLM generates opportunities grounded in real scraped data
 """
 
 import json
@@ -13,6 +18,7 @@ import litellm
 from dotenv import load_dotenv
 
 from agent.state import AgentState
+from tools import extract_website, search_web
 
 load_dotenv()
 
@@ -20,27 +26,42 @@ _MODEL = os.environ.get("LITELLM_MODEL", "gpt-4o-mini")
 
 
 # ---------------------------------------------------------------------------
-# Node 1 — Analyze Competitors
+# Node 1 — Analyze Competitors (Tavily-powered)
 # ---------------------------------------------------------------------------
 
 def analyze_competitors(state: AgentState) -> AgentState:
     """
-    Use the LLM to identify the top 3 organic competitors for the target domain.
+    Use Tavily to search the web for actual competitors of the target domain,
+    then use the LLM to extract clean domain names from the results.
 
     Writes:  state["competitors"]
     """
     target = state["target_domain"]
 
-    prompt = f"""You are an SEO expert. List the top 3 organic search competitors
-for the domain '{target}'. Return ONLY a JSON array of domain strings.
-Example: ["competitor1.com", "competitor2.com"]
+    # Real-time web search for competitors
+    try:
+        results = search_web(f"top competitors and alternatives to {target}", max_results=5)
+        search_context = "\n".join(
+            f"- {r['title']}: {r['content'][:200]}" for r in results
+        )
+    except Exception as exc:
+        return {**state, "error": f"Tavily search failed: {exc}"}
+
+    prompt = f"""You are an SEO expert. Based on the web search results below,
+identify the top 3 competitor domains for '{target}'.
+
+Search results:
+{search_context}
+
+Return ONLY a JSON array of domain strings (no www, no https).
+Example: ["competitor1.com", "competitor2.com", "competitor3.com"]
 No explanation, just the array."""
 
     try:
         response = litellm.completion(
             model=_MODEL,
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.2,
+            temperature=0.1,
         )
         raw = response.choices[0].message.content.strip()
         competitors: list[str] = json.loads(raw)
@@ -51,43 +72,65 @@ No explanation, just the array."""
 
 
 # ---------------------------------------------------------------------------
-# Node 2 — Enrich Competitors (LLM-powered, no external API)
+# Node 2 — Enrich with Tavily
 # ---------------------------------------------------------------------------
 
 def fetch_backlink_stats(state: AgentState) -> AgentState:
     """
-    Use the LLM to describe the backlink profile of each competitor
-    (niche, authority, typical link sources) without any external API call.
+    Use Tavily to:
+      1. Extract the target website's content (understand what it does).
+      2. Search for real backlink/authority data for each competitor.
 
-    Writes:  state["raw_referring_domains"]
+    Writes:  state["raw_referring_domains"]  (enriched profiles)
     """
     if state.get("error"):
         return state
 
-    competitors = state.get("competitors", [])
     target = state["target_domain"]
+    competitors = state.get("competitors", [])
 
-    prompt = f"""You are an SEO data analyst. For each of the following competitor domains,
-provide a brief backlink profile summary based on your knowledge.
+    # 1. Extract target website to understand its niche and content
+    target_content = extract_website(f"https://{target}")
 
-Target site: '{target}'
+    # 2. Search for competitor backlink profiles (one combined search)
+    competitor_list = ", ".join(competitors)
+    try:
+        link_results = search_web(
+            f"backlinks domain authority referring domains {competitor_list} SEO analysis",
+            max_results=5,
+        )
+        link_context = "\n".join(
+            f"- {r['title']}: {r['content'][:300]}" for r in link_results
+        )
+    except Exception as exc:
+        link_context = f"Search failed: {exc}"
+
+    # 3. Ask LLM to build structured profiles from the real data
+    prompt = f"""You are an SEO data analyst. Using the web data below, build a backlink profile for each competitor.
+
+Target site '{target}' content:
+{target_content[:1000] if target_content else 'Could not extract — use your knowledge.'}
+
+Web data about competitor link profiles:
+{link_context}
+
 Competitors: {json.dumps(competitors)}
 
 Return ONLY a valid JSON array. Each object must have:
-- "domain": the competitor domain
+- "domain": competitor domain
 - "da": estimated domain authority 1-100 (integer)
-- "ref_domains": estimated number of referring domains (integer)
+- "ref_domains": estimated referring domains (integer)
 - "total_backlinks": estimated total backlinks (integer)
 - "niche": one phrase describing their primary niche
-- "top_link_sources": array of 3 strings — types of sites that typically link to them
+- "top_link_sources": array of 3 strings — types of sites that link to them
 
-No markdown, no explanation — just the JSON array."""
+Base your estimates on the real web data above. No markdown — just the JSON array."""
 
     try:
         response = litellm.completion(
             model=_MODEL,
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.3,
+            temperature=0.2,
         )
         raw = response.choices[0].message.content.strip()
         if raw.startswith("```"):
@@ -96,9 +139,15 @@ No markdown, no explanation — just the JSON array."""
                 raw = raw[4:]
         profiles: list[dict[str, Any]] = json.loads(raw.strip())
     except Exception as exc:
-        return {**state, "error": f"enrich_competitors failed: {exc}"}
+        return {**state, "error": f"enrich_with_tavily failed: {exc}"}
 
-    return {**state, "raw_referring_domains": profiles, "error": None}
+    # Attach target site context for use in node 3
+    return {
+        **state,
+        "raw_referring_domains": profiles,
+        "error": None,
+        "_target_content": target_content[:500] if target_content else "",
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -107,8 +156,8 @@ No markdown, no explanation — just the JSON array."""
 
 def filter_and_rank(state: AgentState) -> AgentState:
     """
-    Use the LLM to generate a ranked list of concrete link-building
-    opportunities based on competitor profiles.
+    Use the LLM — grounded in real Tavily data — to generate 15 ranked,
+    actionable link-building opportunities for the target site.
 
     Writes:  state["opportunities"]
     """
@@ -117,27 +166,46 @@ def filter_and_rank(state: AgentState) -> AgentState:
 
     profiles = state.get("raw_referring_domains", [])
     target = state["target_domain"]
+    target_content = state.get("_target_content", "")
 
     if not profiles:
         return {**state, "error": "Could not build competitor profiles."}
 
-    prompt = f"""You are a senior SEO link-building strategist. The client's website is '{target}'.
+    # Search for niche-specific link building opportunities
+    try:
+        niche_results = search_web(
+            f"link building opportunities guest posts {target} niche backlinks 2024",
+            max_results=5,
+        )
+        niche_context = "\n".join(
+            f"- {r['url']}: {r['content'][:200]}" for r in niche_results
+        )
+    except Exception:
+        niche_context = ""
 
-Here are the backlink profiles of their top competitors:
+    prompt = f"""You are a senior SEO link-building strategist.
+
+CLIENT WEBSITE: '{target}'
+{f"What the site does: {target_content}" if target_content else ""}
+
+COMPETITOR BACKLINK PROFILES (from real web data):
 {json.dumps(profiles, indent=2)}
 
+NICHE LINK-BUILDING OPPORTUNITIES FOUND ONLINE:
+{niche_context if niche_context else "Use your expert knowledge."}
+
 Generate exactly 15 high-quality, actionable link-building opportunities for '{target}'.
-Each must be a SPECIFIC, REAL website the client can realistically get a backlink from,
-inspired by what works for these competitors.
+Each must be a SPECIFIC, REAL website the client can get a backlink from.
+Prioritise sites that actually appear in the data above.
 
-Return ONLY a valid JSON array. Each object must have these exact keys:
-- "domain": specific website (e.g. "producthunt.com")
-- "rank": estimated domain authority 1-100 (integer)
-- "backlinks_num": estimated monthly referral visits potential (integer)
-- "source_competitor": which competitor inspired this opportunity
-- "reason": one clear sentence — how to get the link and why it fits '{target}'
+Return ONLY a valid JSON array. Each object must have:
+- "domain": specific real website (e.g. "producthunt.com")
+- "rank": domain authority 1-100 (integer)
+- "backlinks_num": estimated monthly referral visits (integer)
+- "source_competitor": which competitor inspired this
+- "reason": one sentence — exact strategy to get the link and why it fits '{target}'
 
-No markdown, no explanation — just the JSON array."""
+No markdown, no explanation — only the JSON array."""
 
     try:
         response = litellm.completion(
