@@ -82,3 +82,35 @@ Or push to GitHub — Vercel auto-deploys on every push to `main`.
 - 1 extract: read target website content
 - 1 search: competitor backlink profiles + niche opportunities
 - Free tier: 1,000 calls/month (~333 full agent runs/month)
+
+## Future Roadmap — Full SEO Agent
+The goal is to expand this into a comprehensive SEO assistant that covers a meaningful portion of what a human SEO specialist does day-to-day. Planned modules:
+
+### Phase 2 — On-Page SEO Audit
+- Crawl the target website with Tavily Extract
+- Analyse title tags, meta descriptions, heading structure, keyword density
+- Generate a prioritised list of on-page fixes
+
+### Phase 3 — Keyword Research Agent
+- Use Tavily to search for ranking keywords of competitors
+- LLM clusters keywords by intent (informational, commercial, transactional)
+- Output a content gap report: keywords competitors rank for but the target doesn't
+
+### Phase 4 — Content Brief Generator
+- Given a target keyword, Tavily searches the top 10 ranking pages
+- LLM analyses structure, headings, word count, and entities covered
+- Outputs a detailed content brief the client can hand to a writer
+
+### Phase 5 — Technical SEO Checker
+- Check sitemap, robots.txt, page speed signals, mobile-friendliness
+- Surface critical technical issues with fix instructions
+
+### Phase 6 — Rank Tracking & Reporting
+- Weekly automated agent runs via Vercel Cron
+- Track keyword positions over time
+- Email/Slack digest of wins, drops, and opportunities
+
+### Phase 7 — Outreach Assistant
+- For each link opportunity identified, draft a personalised outreach email
+- Use Tavily to find the site owner's contact information
+- Store outreach status in a simple database
