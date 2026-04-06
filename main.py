@@ -50,12 +50,13 @@ class FindLinksResponse(BaseModel):
 # Endpoints
 # ---------------------------------------------------------------------------
 
-# Serve the frontend at /
-app.mount("/static", StaticFiles(directory="frontend"), name="static")
+# Serve the frontend locally only — Vercel handles static files itself via vercel.json
+if not os.environ.get("VERCEL"):
+    app.mount("/static", StaticFiles(directory="frontend"), name="static")
 
-@app.get("/", include_in_schema=False)
-async def serve_frontend() -> FileResponse:
-    return FileResponse("frontend/index.html")
+    @app.get("/", include_in_schema=False)
+    async def serve_frontend() -> FileResponse:
+        return FileResponse("frontend/index.html")
 
 
 @app.get("/health", tags=["Health"])
