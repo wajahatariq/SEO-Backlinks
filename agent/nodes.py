@@ -70,15 +70,25 @@ def fetch_dataforseo(state: AgentState) -> AgentState:
     for domain in competitors:
         try:
             data = fetch_referring_domains(target=domain, limit=50)
-            # DataForSEO wraps results in tasks[0].result
             tasks = data.get("tasks", [])
-            if tasks and tasks[0].get("result"):
-                items: list[dict[str, Any]] = tasks[0]["result"][0].get("items", [])
+            if not tasks:
+                continue
+
+            task = tasks[0]
+            status_code = task.get("status_code")
+
+            # Surface DataForSEO API-level errors (e.g. 40204 = subscription not active)
+            if status_code != 20000:
+                msg = task.get("status_message", f"DataForSEO error {status_code}")
+                return {**state, "error": f"DataForSEO API error for '{domain}': {msg}"}
+
+            if task.get("result"):
+                items: list[dict[str, Any]] = task["result"][0].get("items", []) or []
                 for item in items:
-                    item["source_competitor"] = domain  # Tag the origin
+                    item["source_competitor"] = domain
                 all_results.extend(items)
+
         except Exception as exc:
-            # Log the failure for this competitor but continue
             all_results.append({"error": str(exc), "source_competitor": domain})
 
     return {**state, "raw_referring_domains": all_results, "error": None}
