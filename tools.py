@@ -1,13 +1,8 @@
 """
-tools.py — DataForSEO API helpers.
+tools.py — Backlink data helpers using RapidAPI (SEO API - Get Backlinks).
 
-All credentials are read from environment variables:
-  DATAFORSEO_LOGIN
-  DATAFORSEO_PASSWORD
-
-Optional proxy (required on Vercel — set a static-IP proxy to satisfy
-DataForSEO's IP whitelist):
-  PROXY_URL  e.g. http://username:password@proxy.webshare.io:port
+Credentials read from environment variables:
+  RAPIDAPI_KEY
 """
 
 import os
@@ -18,66 +13,53 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-DATAFORSEO_BASE_URL = "https://api.dataforseo.com/v3"
+_RAPIDAPI_HOST = "seo-api-get-backlinks.p.rapidapi.com"
+_BASE_URL = f"https://{_RAPIDAPI_HOST}"
 
 
-def _get_auth() -> tuple[str, str]:
-    """Return (login, password) from env vars. Raises if either is missing."""
-    login = os.environ.get("DATAFORSEO_LOGIN")
-    password = os.environ.get("DATAFORSEO_PASSWORD")
-    if not login or not password:
-        raise EnvironmentError(
-            "DATAFORSEO_LOGIN and DATAFORSEO_PASSWORD must be set in the environment."
-        )
-    return login, password
+def _get_headers() -> dict[str, str]:
+    key = os.environ.get("RAPIDAPI_KEY")
+    if not key:
+        raise EnvironmentError("RAPIDAPI_KEY must be set in the environment.")
+    return {
+        "x-rapidapi-key": key,
+        "x-rapidapi-host": _RAPIDAPI_HOST,
+    }
 
 
-def _get_client() -> httpx.Client:
+def fetch_backlink_summary(domain: str) -> dict[str, Any]:
     """
-    Return an httpx Client, routing through PROXY_URL when set.
-    This ensures requests leave from the proxy's fixed IP, satisfying
-    DataForSEO's IP whitelist when deployed on Vercel.
-    """
-    proxy_url = os.environ.get("PROXY_URL")
-    if proxy_url:
-        return httpx.Client(proxy=proxy_url, timeout=30.0)
-    return httpx.Client(timeout=30.0)
+    Fetch backlink summary stats for *domain* via RapidAPI.
 
-
-def fetch_referring_domains(target: str, limit: int = 100) -> dict[str, Any]:
-    """
-    Query the DataForSEO Backlinks — Referring Domains endpoint for *target*.
-
-    Args:
-        target: The domain to analyse (e.g. "example.com").
-        limit:  Max number of referring domains to return (default 100).
-
-    Returns:
-        The parsed JSON response from the DataForSEO API.
+    Returns a dict with keys:
+      - domain        : the queried domain
+      - da            : domain authority (latest)
+      - ref_domains   : number of referring domains (latest)
+      - total_backlinks: total backlink count (latest)
+      - top_anchors   : list of top anchor text objects
+      - monthly_trend : last 6 months of backlink/refdomain counts
 
     Raises:
-        EnvironmentError: If credentials are not configured.
-        httpx.HTTPStatusError: On non-2xx responses.
+      EnvironmentError: if RAPIDAPI_KEY is not set.
+      httpx.HTTPStatusError: on non-2xx responses.
     """
-    auth = _get_auth()
-
-    payload = [
-        {
-            "target": target,
-            "limit": limit,
-            "order_by": ["rank,desc"],
-            "filters": [
-                ["broken_pages", "=", 0],
-            ],
-        }
-    ]
-
-    with _get_client() as client:
-        response = client.post(
-            f"{DATAFORSEO_BASE_URL}/backlinks/referring_domains/live",
-            auth=auth,
-            json=payload,
+    with httpx.Client(timeout=20.0) as client:
+        response = client.get(
+            f"{_BASE_URL}/backlinks.php",
+            headers=_get_headers(),
+            params={"domain": domain},
         )
         response.raise_for_status()
 
-    return response.json()
+    data = response.json()
+    overtime = data.get("overtime", [])
+    latest = overtime[0] if overtime else {}
+
+    return {
+        "domain": domain,
+        "da": latest.get("da", 0),
+        "ref_domains": latest.get("refdomains", 0),
+        "total_backlinks": latest.get("backlinks", 0),
+        "top_anchors": data.get("anchors", [])[:10],
+        "monthly_trend": overtime[:6],
+    }

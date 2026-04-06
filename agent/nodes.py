@@ -2,7 +2,7 @@
 agent/nodes.py — The three processing nodes of the SEO backlink agent.
 
 Node execution order:
-  analyze_competitors → fetch_dataforseo → filter_and_rank
+  analyze_competitors → fetch_backlink_stats → generate_opportunities
 """
 
 import json
@@ -13,11 +13,10 @@ import litellm
 from dotenv import load_dotenv
 
 from agent.state import AgentState
-from tools import fetch_referring_domains
+from tools import fetch_backlink_summary
 
 load_dotenv()
 
-# LiteLLM model — override via LITELLM_MODEL env var (default: gpt-4o-mini)
 _MODEL = os.environ.get("LITELLM_MODEL", "gpt-4o-mini")
 
 # ---------------------------------------------------------------------------
@@ -52,96 +51,84 @@ No explanation, just the array."""
 
 
 # ---------------------------------------------------------------------------
-# Node 2 — Fetch DataForSEO
+# Node 2 — Fetch Backlink Stats
 # ---------------------------------------------------------------------------
 
-def fetch_dataforseo(state: AgentState) -> AgentState:
+def fetch_backlink_stats(state: AgentState) -> AgentState:
     """
-    Call the DataForSEO Backlinks API to fetch referring domains for each competitor.
+    Fetch backlink profile summary for each competitor via RapidAPI.
 
-    Writes:  state["raw_referring_domains"]
+    Writes:  state["raw_referring_domains"]  (list of competitor profile dicts)
     """
     if state.get("error"):
-        return state  # Short-circuit on prior error
+        return state
 
     competitors = state.get("competitors", [])
-    all_results: list[dict[str, Any]] = []
+    profiles: list[dict[str, Any]] = []
 
     for domain in competitors:
         try:
-            data = fetch_referring_domains(target=domain, limit=50)
-            tasks = data.get("tasks", [])
-            if not tasks:
-                continue
-
-            task = tasks[0]
-            status_code = task.get("status_code")
-
-            # Surface DataForSEO API-level errors (e.g. 40204 = subscription not active)
-            if status_code != 20000:
-                msg = task.get("status_message", f"DataForSEO error {status_code}")
-                return {**state, "error": f"DataForSEO API error for '{domain}': {msg}"}
-
-            if task.get("result"):
-                items: list[dict[str, Any]] = task["result"][0].get("items", []) or []
-                for item in items:
-                    item["source_competitor"] = domain
-                all_results.extend(items)
-
+            summary = fetch_backlink_summary(domain)
+            profiles.append(summary)
         except Exception as exc:
-            all_results.append({"error": str(exc), "source_competitor": domain})
+            profiles.append({"domain": domain, "error": str(exc)})
 
-    return {**state, "raw_referring_domains": all_results, "error": None}
+    return {**state, "raw_referring_domains": profiles, "error": None}
 
 
 # ---------------------------------------------------------------------------
-# Node 3 — Filter & Rank
+# Node 3 — Generate Opportunities
 # ---------------------------------------------------------------------------
 
 def filter_and_rank(state: AgentState) -> AgentState:
     """
-    Use the LLM to filter noise and rank the referring domains by opportunity quality.
+    Use the LLM to analyse competitor backlink profiles and generate
+    a ranked list of concrete link-building opportunities for the target.
 
     Writes:  state["opportunities"]
     """
     if state.get("error"):
-        return state  # Short-circuit on prior error
+        return state
 
-    raw = state.get("raw_referring_domains", [])
+    profiles = [p for p in state.get("raw_referring_domains", []) if "error" not in p]
     target = state["target_domain"]
 
-    # Trim payload to keep token usage manageable (top 100 by rank)
-    sortable = [r for r in raw if "error" not in r]
-    sortable.sort(key=lambda x: x.get("rank", 0), reverse=True)
-    trimmed = sortable[:100]
+    if not profiles:
+        return {**state, "error": "No competitor backlink data could be retrieved."}
 
-    prompt = f"""You are an SEO link-building expert. The target site is '{target}'.
+    prompt = f"""You are a senior SEO link-building strategist. The client's website is '{target}'.
 
-Below is a JSON list of referring domains that link to competitors.
-Your task:
-1. Remove spam, low-quality, or irrelevant domains.
-2. Keep only domains that represent realistic link-building opportunities.
-3. Return the filtered list as a JSON array. Each object must have:
-   - "domain": the referring domain
-   - "rank": its domain rank (higher = better)
-   - "backlinks_num": number of backlinks
-   - "source_competitor": which competitor it links to
-   - "reason": one sentence explaining why it's a good opportunity
+Below are the backlink profiles of their top competitors (domain authority, referring domains, top anchor texts, monthly trends):
 
-Return ONLY valid JSON. No markdown fences.
+{json.dumps(profiles, indent=2)}
 
-Data:
-{json.dumps(trimmed, indent=2)}"""
+Using this competitive intelligence, generate exactly 15 high-quality, actionable link-building opportunities for '{target}'.
+
+Each opportunity must be a SPECIFIC, REAL website or type of website that the client can realistically get a link from, based on what is working for their competitors.
+
+Return ONLY a valid JSON array. Each object must have these exact keys:
+- "domain": a specific website or platform (e.g. "producthunt.com", "designmodo.com")
+- "rank": estimated domain authority score 1-100 (integer)
+- "backlinks_num": estimated monthly referral visits potential (integer)
+- "source_competitor": which competitor inspired this opportunity
+- "reason": one clear sentence on how to get the link and why it fits '{target}'
+
+No markdown, no explanation — just the JSON array."""
 
     try:
         response = litellm.completion(
             model=_MODEL,
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.3,
+            temperature=0.4,
         )
         raw_output = response.choices[0].message.content.strip()
-        opportunities: list[dict[str, Any]] = json.loads(raw_output)
+        # Strip markdown fences if model adds them anyway
+        if raw_output.startswith("```"):
+            raw_output = raw_output.split("```")[1]
+            if raw_output.startswith("json"):
+                raw_output = raw_output[4:]
+        opportunities: list[dict[str, Any]] = json.loads(raw_output.strip())
     except Exception as exc:
-        return {**state, "error": f"filter_and_rank failed: {exc}"}
+        return {**state, "error": f"generate_opportunities failed: {exc}"}
 
     return {**state, "opportunities": opportunities, "error": None}

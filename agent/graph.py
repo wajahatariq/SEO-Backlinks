@@ -2,12 +2,12 @@
 agent/graph.py — Assembles the LangGraph StateGraph and compiles it.
 
 Graph topology:
-  analyze_competitors → fetch_dataforseo → filter_and_rank → END
+  analyze_competitors → fetch_backlink_stats → filter_and_rank → END
 """
 
 from langgraph.graph import END, StateGraph
 
-from agent.nodes import analyze_competitors, fetch_dataforseo, filter_and_rank
+from agent.nodes import analyze_competitors, fetch_backlink_stats, filter_and_rank
 from agent.state import AgentState
 
 
@@ -21,7 +21,7 @@ def build_graph() -> StateGraph:
 
     # Register nodes
     graph.add_node("analyze_competitors", analyze_competitors)
-    graph.add_node("fetch_dataforseo", fetch_dataforseo)
+    graph.add_node("fetch_backlink_stats", fetch_backlink_stats)
     graph.add_node("filter_and_rank", filter_and_rank)
 
     # Entry point
@@ -31,10 +31,10 @@ def build_graph() -> StateGraph:
     graph.add_conditional_edges(
         "analyze_competitors",
         _should_continue,
-        {"continue": "fetch_dataforseo", "end": END},
+        {"continue": "fetch_backlink_stats", "end": END},
     )
     graph.add_conditional_edges(
-        "fetch_dataforseo",
+        "fetch_backlink_stats",
         _should_continue,
         {"continue": "filter_and_rank", "end": END},
     )
