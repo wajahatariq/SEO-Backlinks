@@ -1,14 +1,14 @@
 # Project: SEO Backlink Opportunity Agent
 
 ## Overview
-An autonomous SEO agent that analyses a target domain using real-time web intelligence (Tavily), identifies competitors, enriches their backlink profiles, and uses an LLM (Groq) to generate a ranked list of high-quality link-building opportunities.
+An autonomous AI SEO agent that covers a meaningful portion of what a human SEO specialist does day-to-day. Uses real-time web intelligence (Tavily) and an LLM (Groq) to analyse domains, find competitors, surface backlink opportunities, run SERP analysis, and generate gap reports with action plans.
 
 ## Tech Stack
 * Backend: Python 3.11+, FastAPI
 * Agent Orchestration: LangGraph
 * LLM Interface: LiteLLM → Groq (`llama-3.3-70b-versatile`)
 * Web Intelligence: Tavily API (real-time search + website extraction)
-* Frontend: Vanilla HTML, CSS, JavaScript (dark theme)
+* Frontend: Vanilla HTML, CSS, JavaScript (dark theme, 4-tab dashboard)
 * Version Control: Git / GitHub → https://github.com/wajahatariq/SEO-Backlinks.git
 * Deployment: Vercel (serverless Python via `@vercel/python`)
 
@@ -17,43 +17,62 @@ An autonomous SEO agent that analyses a target domain using real-time web intell
 SEO Backlinks/
 ├── agent/
 │   ├── __init__.py
-│   ├── state.py       # AgentState TypedDict
-│   ├── nodes.py       # Three LangGraph nodes (Tavily + LLM powered)
-│   └── graph.py       # Compiled StateGraph (seo_agent)
+│   ├── state.py          # AgentState TypedDict (Module 1)
+│   ├── nodes.py          # Module 1 LangGraph nodes
+│   ├── graph.py          # Module 1 compiled graph (seo_agent)
+│   ├── niche_agent.py    # Module 2 — Niche Outreach Finder
+│   ├── serp_agent.py     # Module 3 — SERP Analyzer
+│   └── gap_agent.py      # Module 4 — Gap Analysis (LangGraph)
 ├── api/
-│   └── index.py       # Vercel serverless entry point
+│   └── index.py          # Vercel serverless entry point
 ├── frontend/
-│   ├── index.html     # Main UI
-│   ├── style.css      # Dark theme styles
-│   └── app.js         # Fetch API + result rendering
-├── main.py            # FastAPI app + /api/find-links endpoint
-├── tools.py           # Tavily helpers: search_web(), extract_website()
+│   ├── index.html        # 4-tab dashboard UI
+│   ├── style.css         # Dark theme styles
+│   └── app.js            # Tab logic, API calls, CSV export
+├── main.py               # FastAPI app — 4 endpoints
+├── tools.py              # Tavily helpers: search_web(), extract_website()
 ├── requirements.txt
-├── vercel.json        # Vercel routing config
-├── .env               # Local secrets (gitignored)
+├── vercel.json           # Vercel routing config
+├── .env                  # Local secrets (gitignored)
 └── .gitignore
 ```
 
-## LangGraph Agent Flow
+## Modules & API Endpoints
+
+| Module | Endpoint | What it does |
+|--------|----------|-------------|
+| 1 — Backlink Finder   | `POST /api/find-links`    | Identifies competitors, surfaces 15 backlink opportunities |
+| 2 — Niche Outreach    | `POST /api/niche-finder`  | Finds guest post / outreach sites by niche + location |
+| 3 — SERP Analyzer     | `POST /api/serp-analyzer` | Returns top 10 SERP competitors for a keyword + insights |
+| 4 — Gap Analysis      | `POST /api/gap-analysis`  | Link gaps, content gaps, authority gap, 15-step action plan |
+
+## LangGraph Agent Flows
+
+### Module 1 (Backlink Finder)
 ```
 analyze_competitors → fetch_backlink_stats → filter_and_rank → END
 ```
+- Node 1: Tavily searches for competitors → LLM extracts domains
+- Node 2: Tavily extracts target site + searches competitor profiles → LLM builds profiles
+- Node 3: Tavily searches niche opportunities → LLM generates 15 ranked opportunities
 
-### Node Details
-| Node | What it does |
-|------|-------------|
-| `analyze_competitors` | Tavily searches web for actual competitors → LLM extracts domains |
-| `fetch_backlink_stats` | Tavily extracts target website + searches competitor link profiles → LLM builds structured profiles |
-| `filter_and_rank` | Tavily searches niche link-building opportunities → LLM generates 15 ranked opportunities |
+### Module 4 (Gap Analysis)
+```
+extract_sites → research_competitor → generate_gap_report → END
+```
+- Node 1: Tavily extracts both your site and competitor site
+- Node 2: Tavily searches competitor authority/backlink data
+- Node 3: LLM generates link gaps, content gaps, authority gap, action plan
 
-Each node writes to `AgentState`. Conditional edges short-circuit to END on any error.
+### Modules 2 & 3
+Simple sync functions (no graph needed) — Tavily search → LLM structured output.
 
 ## Coding Standards & Rules
 1. Python: Use Type Hints. Adhere to PEP 8. Use Pydantic for data validation.
 2. LangGraph: Clear separation of concerns per node. Use `TypedDict` for state.
 3. Credentials: Never hardcode. Always use environment variables via `.env`.
 4. Frontend: Vanilla JS (ES6+), Fetch API, semantic HTML5. No frameworks.
-5. API Endpoints: FastAPI exposes `POST /api/find-links` for the frontend.
+5. API Endpoints: FastAPI exposes all endpoints under `/api/`.
 6. Git: Small, logical commits per feature.
 7. Deployment: `VERCEL=1` auto-set by Vercel — used to skip local-only behaviour.
 
@@ -77,29 +96,21 @@ venv/Scripts/python deploy.py
 ```
 Or push to GitHub — Vercel auto-deploys on every push to `main`.
 
-## Tavily Usage Per Request (~3 API calls)
-- 1 search: find competitors for target domain
-- 1 extract: read target website content
-- 1 search: competitor backlink profiles + niche opportunities
-- Free tier: 1,000 calls/month (~333 full agent runs/month)
+## Tavily Usage Per Request
+| Module | Calls | Purpose |
+|--------|-------|---------|
+| 1 — Backlink Finder | ~3 | Competitor search, site extract, niche search |
+| 2 — Niche Outreach  | 1  | Niche guest post search |
+| 3 — SERP Analyzer   | 1  | Keyword SERP search |
+| 4 — Gap Analysis    | ~3 | Extract both sites, competitor research |
+Free tier: 1,000 calls/month
 
-## Future Roadmap — Full SEO Agent
-The goal is to expand this into a comprehensive SEO assistant that covers a meaningful portion of what a human SEO specialist does day-to-day. Planned modules:
+## Future Roadmap — Remaining Modules
 
-### Phase 2 — On-Page SEO Audit
-- Crawl the target website with Tavily Extract
-- Analyse title tags, meta descriptions, heading structure, keyword density
-- Generate a prioritised list of on-page fixes
-
-### Phase 3 — Keyword Research Agent
-- Use Tavily to search for ranking keywords of competitors
-- LLM clusters keywords by intent (informational, commercial, transactional)
-- Output a content gap report: keywords competitors rank for but the target doesn't
-
-### Phase 4 — Content Brief Generator
-- Given a target keyword, Tavily searches the top 10 ranking pages
-- LLM analyses structure, headings, word count, and entities covered
-- Outputs a detailed content brief the client can hand to a writer
+### Module 1 Enhancement — Real Backlink Data (pending DataForSEO fix)
+- Hook DataForSEO Backlinks API back in once account is unblocked
+- Add real DA, Spam Score, Dofollow/Nofollow per backlink
+- Categorize links: Guest Post, Profile, Directory, Forum, Web 2.0
 
 ### Phase 5 — Technical SEO Checker
 - Check sitemap, robots.txt, page speed signals, mobile-friendliness
@@ -111,6 +122,6 @@ The goal is to expand this into a comprehensive SEO assistant that covers a mean
 - Email/Slack digest of wins, drops, and opportunities
 
 ### Phase 7 — Outreach Assistant
-- For each link opportunity identified, draft a personalised outreach email
+- For each link opportunity, draft a personalised outreach email
 - Use Tavily to find the site owner's contact information
 - Store outreach status in a simple database
