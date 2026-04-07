@@ -1,9 +1,13 @@
 import asyncio
+import json
+import math
 import os
-from fastapi import FastAPI, HTTPException
+from collections import Counter
+
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
 from pydantic import BaseModel, field_validator
 from dotenv import load_dotenv
 
@@ -13,6 +17,14 @@ from agent.graph import seo_agent
 from agent.niche_agent import run_niche_finder
 from agent.serp_agent import run_serp_analyzer
 from agent.gap_agent import gap_agent
+from agent.pdf_agent import (
+    CATEGORIES,
+    CHUNK_SIZE,
+    _extract_domain,
+    _rule_classify,
+    classify_chunk_llm,
+    extract_items_from_pdf,
+)
 
 app = FastAPI(
     title="SEO Backlink Opportunity Agent",
@@ -191,4 +203,93 @@ async def gap_analysis(body: GapRequest) -> GapResponse:
         link_gaps=result["link_gaps"],
         content_gaps=result["content_gaps"],
         action_plan=result["action_plan"],
+    )
+
+
+# ---------------------------------------------------------------------------
+# Module 5 — PDF Backlink Classifier (SSE streaming)
+# ---------------------------------------------------------------------------
+
+@app.post("/api/classify-pdf", tags=["Module 5"])
+async def classify_pdf(file: UploadFile = File(...)) -> StreamingResponse:
+    """
+    Upload a PDF containing backlink URLs. AI classifies each into:
+    Guest Post | Profile Creation | Business Directory | Forum/Comment | Web 2.0.
+
+    Returns a Server-Sent Events stream so the frontend can show live progress.
+    Events: start → progress (per chunk) → done | error
+    """
+    pdf_bytes = await file.read()
+
+    async def event_stream():
+        # ── 1. Extract URLs from PDF ──────────────────────────────────────
+        try:
+            items = await asyncio.to_thread(extract_items_from_pdf, pdf_bytes)
+        except Exception as exc:
+            yield f"data: {json.dumps({'type': 'error', 'message': f'PDF extraction failed: {exc}'})}\n\n"
+            return
+
+        if not items:
+            yield f"data: {json.dumps({'type': 'error', 'message': 'No URLs or domains found in the PDF. Make sure the file contains backlink data.'})}\n\n"
+            return
+
+        # ── 2. Fast rule-based pass ───────────────────────────────────────
+        pre: list[dict | None] = []
+        unknown: list[str] = []
+        for item in items:
+            cat = _rule_classify(_extract_domain(item))
+            if cat:
+                pre.append({
+                    "url": item,
+                    "domain": _extract_domain(item),
+                    "category": cat,
+                    "confidence": "High",
+                })
+            else:
+                pre.append(None)
+                unknown.append(item)
+
+        total_chunks = math.ceil(len(unknown) / CHUNK_SIZE) if unknown else 0
+
+        yield f"data: {json.dumps({'type': 'start', 'total': len(items), 'rule_classified': len(items) - len(unknown), 'llm_needed': len(unknown), 'chunks': total_chunks})}\n\n"
+
+        # ── 3. LLM classification in chunks ──────────────────────────────
+        llm_results: list[dict] = []
+        for i in range(total_chunks):
+            chunk = unknown[i * CHUNK_SIZE: (i + 1) * CHUNK_SIZE]
+            try:
+                classified = await asyncio.to_thread(classify_chunk_llm, chunk)
+            except Exception:
+                classified = [
+                    {"url": u, "category": "Guest Post", "confidence": "Low"}
+                    for u in chunk
+                ]
+            for r in classified:
+                r["domain"] = _extract_domain(r.get("url", ""))
+            llm_results.extend(classified)
+
+            yield f"data: {json.dumps({'type': 'progress', 'chunk': i + 1, 'total_chunks': total_chunks, 'processed': min((i + 1) * CHUNK_SIZE, len(unknown)), 'total_llm': len(unknown)})}\n\n"
+
+        # ── 4. Merge rule + LLM results ───────────────────────────────────
+        final: list[dict] = []
+        llm_idx = 0
+        for entry in pre:
+            if entry is not None:
+                final.append(entry)
+            else:
+                if llm_idx < len(llm_results):
+                    final.append(llm_results[llm_idx])
+                    llm_idx += 1
+
+        # ── 5. Build summary and emit done ────────────────────────────────
+        counts = Counter(r.get("category", "Guest Post") for r in final)
+        summary = {cat: counts.get(cat, 0) for cat in CATEGORIES}
+        summary["total"] = len(final)
+
+        yield f"data: {json.dumps({'type': 'done', 'results': final, 'summary': summary})}\n\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )

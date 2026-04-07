@@ -381,3 +381,266 @@ document.getElementById('form-gap').addEventListener('submit', async e => {
 
 // Auto-focus first input on load
 document.getElementById('input-domain').focus();
+
+// ════════════════════════════════════════════════════════════════════════════
+// MODULE 5 — PDF Backlink Classifier
+// ════════════════════════════════════════════════════════════════════════════
+
+const CAT_COLORS = {
+  'Guest Post':         'pill-blue',
+  'Profile Creation':   'pill-purple',
+  'Business Directory': 'pill-green',
+  'Forum/Comment':      'pill-yellow',
+  'Web 2.0':            'pill-orange',
+};
+
+function catPill(cat) {
+  const cls = CAT_COLORS[cat] || 'pill-gray';
+  return `<span class="pill ${cls}">${esc(cat)}</span>`;
+}
+
+function confPill(conf) {
+  const map = { High: 'pill-green', Medium: 'pill-yellow', Low: 'pill-gray' };
+  return `<span class="pill ${map[conf] || 'pill-gray'}">${esc(conf || '—')}</span>`;
+}
+
+// ── State ─────────────────────────────────────────────────────────────────
+let pdfAllResults  = [];
+let pdfActiveCat   = 'all';
+let pdfCurrentPage = 1;
+const PDF_PAGE     = 100;
+
+function pdfFiltered() {
+  if (pdfActiveCat === 'all') return pdfAllResults;
+  return pdfAllResults.filter(r => r.category === pdfActiveCat);
+}
+
+function renderPdfTable() {
+  const filtered = pdfFiltered();
+  const total    = filtered.length;
+  const start    = (pdfCurrentPage - 1) * PDF_PAGE;
+  const page     = filtered.slice(start, start + PDF_PAGE);
+  const offset   = start;
+
+  document.getElementById('pdf-count').textContent =
+    pdfActiveCat === 'all' ? `${total} total` : `${total} in category`;
+
+  document.getElementById('tbody-pdf').innerHTML = page.length
+    ? page.map((r, i) => `<tr>
+        <td class="cell-num" style="color:var(--text-3)">${offset + i + 1}</td>
+        <td class="cell-domain">${esc(r.domain || r.url || '—')}</td>
+        <td>${catPill(r.category)}</td>
+        <td>${confPill(r.confidence)}</td>
+        <td class="cell-url"><a href="${esc(r.url || '#')}" target="_blank" rel="noopener" title="${esc(r.url || '')}">
+          ${esc((r.url || '').length > 55 ? r.url.slice(0, 55) + '…' : r.url || '—')}
+        </a></td>
+      </tr>`).join('')
+    : `<tr><td colspan="5" style="text-align:center;padding:28px;color:var(--text-3)">No results in this category.</td></tr>`;
+
+  renderPdfPagination(total);
+}
+
+function renderPdfPagination(total) {
+  const pages = Math.ceil(total / PDF_PAGE);
+  const pag   = document.getElementById('pdf-pagination');
+  if (pages <= 1) { pag.classList.add('hidden'); return; }
+
+  pag.classList.remove('hidden');
+  pag.innerHTML = `
+    <button class="pag-btn" id="pag-prev" ${pdfCurrentPage === 1 ? 'disabled' : ''}>← Prev</button>
+    <span class="pag-info">Page ${pdfCurrentPage} of ${pages} &nbsp;·&nbsp; ${total} items</span>
+    <button class="pag-btn" id="pag-next" ${pdfCurrentPage >= pages ? 'disabled' : ''}>Next →</button>`;
+
+  document.getElementById('pag-prev').onclick = () => {
+    if (pdfCurrentPage > 1) { pdfCurrentPage--; renderPdfTable(); }
+  };
+  document.getElementById('pag-next').onclick = () => {
+    if (pdfCurrentPage < pages) { pdfCurrentPage++; renderPdfTable(); }
+  };
+}
+
+// ── Category filter buttons ───────────────────────────────────────────────
+document.getElementById('cat-filters').addEventListener('click', e => {
+  const btn = e.target.closest('.cat-filter-btn');
+  if (!btn) return;
+  document.querySelectorAll('.cat-filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  pdfActiveCat   = btn.dataset.cat;
+  pdfCurrentPage = 1;
+  renderPdfTable();
+});
+
+// ── Upload zone ───────────────────────────────────────────────────────────
+let selectedPdf = null;
+
+function handleFileSelect(file) {
+  if (!file || file.type !== 'application/pdf') {
+    showError('err-pdf', 'Please select a valid PDF file.');
+    return;
+  }
+  selectedPdf = file;
+  document.getElementById('selected-filename').textContent = file.name;
+  document.getElementById('selected-file').classList.remove('hidden');
+  document.getElementById('btn-classify').disabled = false;
+  clearError('err-pdf');
+}
+
+const uploadZone  = document.getElementById('upload-zone');
+const pdfInput    = document.getElementById('input-pdf');
+
+document.getElementById('browse-btn').addEventListener('click', e => {
+  e.stopPropagation();
+  pdfInput.click();
+});
+uploadZone.addEventListener('click', () => pdfInput.click());
+pdfInput.addEventListener('change', () => {
+  if (pdfInput.files[0]) handleFileSelect(pdfInput.files[0]);
+});
+
+uploadZone.addEventListener('dragover', e => {
+  e.preventDefault();
+  uploadZone.classList.add('drag-over');
+});
+uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag-over'));
+uploadZone.addEventListener('drop', e => {
+  e.preventDefault();
+  uploadZone.classList.remove('drag-over');
+  const f = e.dataTransfer.files[0];
+  if (f) { pdfInput.files = e.dataTransfer.files; handleFileSelect(f); }
+});
+
+// ── Progress helpers ──────────────────────────────────────────────────────
+function showProgress(status, counter, detail, pct) {
+  const sec = document.getElementById('pdf-progress');
+  sec.classList.remove('hidden');
+  document.getElementById('pdf-status').textContent  = status;
+  document.getElementById('pdf-counter').textContent = counter;
+  document.getElementById('pdf-detail').textContent  = detail;
+  const bar = document.getElementById('pdf-bar');
+  if (pct == null) {
+    bar.classList.add('indeterminate');
+    bar.style.width = '30%';
+  } else {
+    bar.classList.remove('indeterminate');
+    bar.style.width = `${Math.min(100, Math.max(2, pct))}%`;
+  }
+}
+
+// ── Main classify handler ─────────────────────────────────────────────────
+document.getElementById('btn-classify').addEventListener('click', async () => {
+  if (!selectedPdf) return;
+  clearError('err-pdf');
+
+  const btn = document.getElementById('btn-classify');
+  btn.disabled = true;
+  btn.querySelector('.btn-spin').classList.remove('hidden');
+  btn.querySelector('.btn-label').textContent = 'Processing…';
+
+  document.getElementById('results-pdf').classList.add('hidden');
+  document.getElementById('pdf-progress').classList.remove('hidden');
+  showProgress('Extracting URLs from PDF…', '', 'Reading pages…', null);
+
+  pdfAllResults  = [];
+  pdfActiveCat   = 'all';
+  pdfCurrentPage = 1;
+
+  // Reset category filters
+  document.querySelectorAll('.cat-filter-btn').forEach(b => b.classList.remove('active'));
+  document.querySelector('.cat-filter-btn[data-cat="all"]').classList.add('active');
+
+  try {
+    const formData = new FormData();
+    formData.append('file', selectedPdf);
+
+    const response = await fetch(`${API_BASE}/api/classify-pdf`, {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({ detail: `HTTP ${response.status}` }));
+      throw new Error(err.detail || `HTTP ${response.status}`);
+    }
+
+    const reader  = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer    = '';
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop(); // keep incomplete trailing line
+
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        let evt;
+        try { evt = JSON.parse(line.slice(6)); } catch { continue; }
+
+        if (evt.type === 'error') {
+          throw new Error(evt.message);
+
+        } else if (evt.type === 'start') {
+          const ruleInfo = evt.rule_classified > 0
+            ? ` · ${evt.rule_classified} instant · ${evt.llm_needed} via AI`
+            : '';
+          showProgress(
+            'AI is working…',
+            `0 / ${evt.chunks} chunks`,
+            `Found ${evt.total} unique URLs${ruleInfo}`,
+            evt.chunks === 0 ? 98 : 2,
+          );
+
+        } else if (evt.type === 'progress') {
+          const pct = Math.round((evt.chunk / evt.total_chunks) * 100);
+          showProgress(
+            'AI is working…',
+            `Chunk ${evt.chunk} / ${evt.total_chunks}`,
+            `Classified ${evt.processed} / ${evt.total_llm} URLs via AI`,
+            pct,
+          );
+
+        } else if (evt.type === 'done') {
+          pdfAllResults = evt.results || [];
+          showProgress('Complete!', '', `${pdfAllResults.length} URLs classified`, 100);
+
+          // Summary cards
+          const summary = evt.summary || {};
+          const catColors = {
+            'Guest Post': '#6c63ff', 'Profile Creation': '#c4b5fd',
+            'Business Directory': '#4ade80', 'Forum/Comment': '#fbbf24', 'Web 2.0': '#fb923c',
+          };
+          document.getElementById('cat-summary').innerHTML =
+            Object.entries(summary)
+              .filter(([k]) => k !== 'total')
+              .map(([cat, count]) => `
+                <div class="cat-stat">
+                  <div class="cat-stat-label">${esc(cat)}</div>
+                  <div class="cat-stat-value" style="color:${catColors[cat]||'var(--accent)'}">
+                    ${count}
+                  </div>
+                </div>`).join('');
+
+          renderPdfTable();
+
+          const exportBtn = document.getElementById('export-pdf');
+          exportBtn.classList.remove('hidden');
+          exportBtn.onclick = () => exportCSV(pdfAllResults, `backlinks-classified-${Date.now()}.csv`);
+
+          document.getElementById('results-pdf').classList.remove('hidden');
+          document.getElementById('results-pdf').scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }
+    }
+
+  } catch (err) {
+    document.getElementById('pdf-progress').classList.add('hidden');
+    showError('err-pdf', err.message);
+  } finally {
+    btn.disabled = false;
+    btn.querySelector('.btn-spin').classList.add('hidden');
+    btn.querySelector('.btn-label').textContent = 'Classify Backlinks';
+  }
+});

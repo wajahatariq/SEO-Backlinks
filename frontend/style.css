@@ -278,5 +278,108 @@ tbody td { padding: 12px 12px; color: var(--text-1); vertical-align: top; }
 .pill-red    { background: rgba(248,113,113,0.12);color: #f87171; }
 .pill-gray   { background: var(--surface-2);      color: var(--text-2); }
 
+/* ── Extra Pill Colours ───────────────────────────────────────────────────── */
+.pill-purple { background: rgba(167,139,250,0.12); color: #c4b5fd; }
+.pill-orange { background: rgba(251,146,60,0.12);  color: #fb923c; }
+
+/* ── Upload Zone ──────────────────────────────────────────────────────────── */
+.upload-zone {
+  border: 2px dashed var(--border); border-radius: var(--radius);
+  padding: 42px 24px; text-align: center; cursor: pointer;
+  transition: border-color 0.2s, background 0.2s;
+  max-width: 560px; margin: 0 auto 16px;
+}
+.upload-zone:hover, .upload-zone.drag-over {
+  border-color: var(--accent); background: var(--accent-glow);
+}
+.upload-zone svg { color: var(--text-3); margin-bottom: 12px; }
+.upload-zone p { color: var(--text-2); font-size: 0.9rem; margin-bottom: 4px; }
+.upload-zone .browse-btn {
+  color: var(--accent); background: none; border: none; cursor: pointer;
+  font-size: 0.9rem; font-weight: 600; padding: 0; text-decoration: underline;
+}
+.upload-hint { font-size: 0.78rem !important; color: var(--text-3) !important; }
+.selected-file {
+  margin-top: 10px; font-size: 0.82rem; font-weight: 600;
+  color: var(--success); display: flex; align-items: center;
+  justify-content: center; gap: 6px;
+}
+
+/* ── Progress Section ─────────────────────────────────────────────────────── */
+.progress-section {
+  max-width: 560px; margin: 0 auto 28px;
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: var(--radius); padding: 20px 22px;
+}
+.progress-header {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 12px;
+}
+.progress-status { font-weight: 700; font-size: 0.9rem; color: var(--text-1); }
+.progress-counter { font-size: 0.78rem; color: var(--accent); font-weight: 600; }
+.progress-bar-track {
+  background: var(--surface-2); border-radius: 999px;
+  height: 8px; overflow: hidden; margin-bottom: 10px;
+}
+.progress-bar-fill {
+  height: 100%; background: var(--accent);
+  border-radius: 999px; width: 0%;
+  transition: width 0.4s ease; min-width: 4px;
+}
+.progress-bar-fill.indeterminate {
+  width: 30% !important;
+  animation: indeterminate 1.4s ease-in-out infinite;
+}
+@keyframes indeterminate {
+  0%   { transform: translateX(-100%); }
+  100% { transform: translateX(400%); }
+}
+.progress-detail {
+  font-size: 0.78rem; color: var(--text-3); line-height: 1.5;
+}
+
+/* ── Category Summary Grid ────────────────────────────────────────────────── */
+.cat-summary {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px; margin-top: 4px;
+}
+.cat-stat {
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); padding: 14px 12px; text-align: center;
+}
+.cat-stat-label { font-size: 0.7rem; color: var(--text-3); font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; }
+.cat-stat-value { font-size: 1.6rem; font-weight: 800; color: var(--accent); }
+
+/* ── Category Filter Tabs ─────────────────────────────────────────────────── */
+.cat-filters {
+  display: flex; flex-wrap: wrap; gap: 6px; padding: 14px 0 16px;
+  border-bottom: 1px solid var(--border); margin-bottom: 4px;
+}
+.cat-filter-btn {
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: 999px; color: var(--text-2);
+  font-size: 0.78rem; font-weight: 600; padding: 5px 14px;
+  cursor: pointer; transition: all 0.2s; white-space: nowrap;
+}
+.cat-filter-btn:hover { color: var(--text-1); border-color: var(--accent); }
+.cat-filter-btn.active {
+  background: var(--accent); border-color: var(--accent); color: #fff;
+}
+
+/* ── Pagination ───────────────────────────────────────────────────────────── */
+.pagination {
+  display: flex; align-items: center; justify-content: center;
+  gap: 10px; padding: 16px 0 2px;
+}
+.pag-btn {
+  background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: var(--radius-sm); color: var(--text-2);
+  font-size: 0.82rem; font-weight: 600; padding: 6px 16px;
+  cursor: pointer; transition: all 0.2s;
+}
+.pag-btn:hover:not(:disabled) { color: var(--text-1); border-color: var(--accent); }
+.pag-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.pag-info { font-size: 0.82rem; color: var(--text-3); }
+
 /* ── Utility ──────────────────────────────────────────────────────────────── */
 .hidden { display: none !important; }

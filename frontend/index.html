@@ -38,6 +38,10 @@
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/></svg>
         Gap Analysis
       </button>
+      <button class="tab-btn" data-tab="pdf">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        PDF Classifier
+      </button>
     </nav>
 
     <!-- ── TAB 1: Backlink Finder ── -->
@@ -244,6 +248,90 @@
             <table><thead><tr><th>#</th><th>Action</th><th>Type</th><th>Priority</th><th>Timeline</th></tr></thead>
             <tbody id="tbody-action-plan"></tbody></table>
           </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ── TAB 5: PDF Backlink Classifier ── -->
+    <section class="tab-pane" id="tab-pdf">
+      <div class="pane-hero">
+        <h1>PDF Backlink Classifier</h1>
+        <p>Upload a PDF containing backlink URLs. AI reads it in chunks and sorts every link into the right category.</p>
+
+        <!-- Upload Zone -->
+        <div class="upload-zone" id="upload-zone">
+          <input type="file" id="input-pdf" accept=".pdf" hidden />
+          <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          <p>Drop your PDF here or <button class="browse-btn" id="browse-btn">browse files</button></p>
+          <p class="upload-hint">Handles large files · processes in chunks · any backlink list format</p>
+          <p class="selected-file hidden" id="selected-file">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+            <span id="selected-filename"></span>
+          </p>
+        </div>
+
+        <button class="btn-primary" id="btn-classify" disabled>
+          <span class="btn-label">Classify Backlinks</span>
+          <span class="btn-spin hidden"></span>
+        </button>
+        <p class="error-msg hidden" id="err-pdf"></p>
+      </div>
+
+      <!-- Progress Section -->
+      <div class="progress-section hidden" id="pdf-progress">
+        <div class="progress-header">
+          <span class="progress-status" id="pdf-status">AI is working...</span>
+          <span class="progress-counter" id="pdf-counter"></span>
+        </div>
+        <div class="progress-bar-track">
+          <div class="progress-bar-fill indeterminate" id="pdf-bar"></div>
+        </div>
+        <p class="progress-detail" id="pdf-detail"></p>
+      </div>
+
+      <!-- Results -->
+      <div id="results-pdf" class="results hidden">
+
+        <!-- Category Summary -->
+        <div class="card">
+          <h2 class="card-title">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+            Classification Summary
+          </h2>
+          <div class="cat-summary" id="cat-summary"></div>
+        </div>
+
+        <!-- Classified Table -->
+        <div class="card">
+          <div class="card-header">
+            <h2 class="card-title">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+              Classified Links
+            </h2>
+            <div class="card-actions">
+              <span id="pdf-count" class="badge"></span>
+              <button class="btn-export hidden" id="export-pdf">Export CSV</button>
+            </div>
+          </div>
+
+          <!-- Category filter buttons -->
+          <div class="cat-filters" id="cat-filters">
+            <button class="cat-filter-btn active" data-cat="all">All</button>
+            <button class="cat-filter-btn" data-cat="Guest Post">Guest Post</button>
+            <button class="cat-filter-btn" data-cat="Profile Creation">Profile Creation</button>
+            <button class="cat-filter-btn" data-cat="Business Directory">Business Directory</button>
+            <button class="cat-filter-btn" data-cat="Forum/Comment">Forum / Comment</button>
+            <button class="cat-filter-btn" data-cat="Web 2.0">Web 2.0</button>
+          </div>
+
+          <div class="table-wrapper">
+            <table>
+              <thead><tr><th>#</th><th>Domain</th><th>Category</th><th>Confidence</th><th>Full URL</th></tr></thead>
+              <tbody id="tbody-pdf"></tbody>
+            </table>
+          </div>
+          <div class="pagination hidden" id="pdf-pagination"></div>
         </div>
 
       </div>
