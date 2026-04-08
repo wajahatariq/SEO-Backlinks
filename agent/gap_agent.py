@@ -98,35 +98,59 @@ Content extracted: {state['competitor_content'][:600] or 'Could not extract — 
 Web research on competitor authority:
 {state['competitor_research'][:500]}
 
-Return ONLY a valid JSON object with these exact keys:
+CRITICAL RULES:
+1. Return ONLY a raw JSON object — no markdown, no code fences, no explanation.
+2. Every string value MUST be wrapped in double quotes. No unquoted text.
+3. Use the EXACT structure shown in the example below.
 
-"authority_gap": {{
-  "your_estimated_da": integer,
-  "competitor_estimated_da": integer,
-  "links_needed": integer (estimated quality links to close the gap),
-  "summary": one sentence
+EXAMPLE OUTPUT STRUCTURE (replace example values with real analysis):
+{{
+  "authority_gap": {{
+    "your_estimated_da": 20,
+    "competitor_estimated_da": 55,
+    "links_needed": 120,
+    "summary": "Your site has a significant authority gap and needs quality backlinks to compete."
+  }},
+  "link_gaps": [
+    {{
+      "domain": "example-blog.com",
+      "da_estimate": 45,
+      "type": "Guest Post",
+      "how_to_get": "Reach out to their editor with a relevant article pitch via their contact page."
+    }}
+  ],
+  "content_gaps": [
+    {{
+      "topic": "beginner tutorials",
+      "content_type": "Guide",
+      "priority": "High",
+      "why_important": "Competitor ranks for this topic and it drives significant organic traffic."
+    }}
+  ],
+  "action_plan": [
+    {{
+      "step": 1,
+      "action": "Conduct a technical SEO audit to fix crawl errors and page speed issues.",
+      "type": "Technical",
+      "priority": "High",
+      "timeline": "Week 1"
+    }}
+  ]
 }}
 
-"link_gaps": array of 10 objects, each:
-  "domain": specific site where competitor likely has a link but you don't
-  "da_estimate": integer
-  "type": one of "Guest Post", "Directory", "Profile", "Forum", "Mention", "Resource Page"
-  "how_to_get": one clear action sentence
+Now produce the REAL analysis for {state['your_domain']} vs {state['competitor_domain']} with:
+- "authority_gap": exactly as shown (4 keys, summary must be a quoted string)
+- "link_gaps": array of 10 objects (domain, da_estimate, type, how_to_get — all strings quoted)
+- "content_gaps": array of 8 objects (topic, content_type, priority, why_important — all strings quoted)
+- "action_plan": array of 15 objects with steps 1-15 (step is integer, action/type/priority/timeline are quoted strings)
 
-"content_gaps": array of 8 objects, each:
-  "topic": topic or keyword competitor covers that you're missing
-  "content_type": "Blog Post", "Landing Page", "Tool", "Guide", "Case Study", "FAQ"
-  "priority": "High", "Medium", or "Low"
-  "why_important": one sentence
+type options for link_gaps: "Guest Post", "Directory", "Profile", "Forum", "Mention", "Resource Page"
+content_type options: "Blog Post", "Landing Page", "Tool", "Guide", "Case Study", "FAQ"
+priority options: "High", "Medium", "Low"
+timeline options: "Week 1", "Week 2", "Month 1", "Month 2", "Month 3"
+action type options: "Profile", "Guest Post", "Content", "Directory", "Outreach", "Technical"
 
-"action_plan": array of 15 step-by-step actions, each:
-  "step": integer 1-15
-  "action": exactly what to do
-  "type": "Profile", "Guest Post", "Content", "Directory", "Outreach", "Technical"
-  "priority": "High", "Medium", or "Low"
-  "timeline": one of "Week 1", "Week 2", "Month 1", "Month 2", "Month 3"
-
-No markdown — only the raw JSON object."""
+Return ONLY the JSON object. Every string value must be in double quotes."""
 
     try:
         resp = litellm.completion(

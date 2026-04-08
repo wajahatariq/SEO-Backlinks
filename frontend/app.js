@@ -383,6 +383,60 @@ document.getElementById('form-gap').addEventListener('submit', async e => {
 document.getElementById('input-domain').focus();
 
 // ════════════════════════════════════════════════════════════════════════════
+// MODULE 6 — Comprehensive Backlink Search
+// ════════════════════════════════════════════════════════════════════════════
+
+document.getElementById('form-search').addEventListener('submit', async e => {
+  e.preventDefault();
+  clearError('err-search');
+
+  const query = document.getElementById('input-search-query').value.trim();
+  if (!query) { showError('err-search', 'Please enter a search query.'); return; }
+
+  setLoading('btn-search', null, null, true, 'Search Backlinks');
+  document.getElementById('results-search').classList.add('hidden');
+
+  try {
+    const res = await fetch(`${API_BASE}/api/backlink-search`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || `Error ${res.status}`);
+
+    const results = data.results || [];
+    document.getElementById('count-search').textContent = `${results.length} found`;
+
+    const relColor = { High: 'pill-green', Medium: 'pill-yellow', Low: 'pill-gray' };
+
+    document.getElementById('tbody-search').innerHTML = results.length
+      ? results.map((r, i) => `<tr>
+          <td class="cell-num" style="color:var(--text-3)">${i + 1}</td>
+          <td class="cell-domain"><a href="${esc(r.url || '#')}" target="_blank" rel="noopener">${esc(r.domain || '—')}</a></td>
+          <td class="cell-num">${r.da_estimate ? fmt(r.da_estimate) : '—'}</td>
+          <td>${typePill(r.type)}</td>
+          <td><span class="pill ${relColor[r.relevance] || 'pill-gray'}">${esc(r.relevance || '—')}</span></td>
+          <td class="cell-muted">${esc(r.how_to_get || '—')}</td>
+          <td class="cell-url"><a href="${esc(r.url || '#')}" target="_blank" rel="noopener" title="${esc(r.url || '')}">Visit</a></td>
+        </tr>`).join('')
+      : `<tr><td colspan="7" style="text-align:center;padding:28px;color:var(--text-3)">No results found.</td></tr>`;
+
+    const exportBtn = document.getElementById('export-search');
+    exportBtn.classList.remove('hidden');
+    exportBtn.onclick = () => exportCSV(results, `backlink-search-${query.replace(/\s+/g, '-')}.csv`);
+
+    document.getElementById('results-search').classList.remove('hidden');
+    document.getElementById('results-search').scrollIntoView({ behavior: 'smooth', block: 'start' });
+
+  } catch (err) {
+    showError('err-search', err.message);
+  } finally {
+    setLoading('btn-search', null, null, false, 'Search Backlinks');
+  }
+});
+
+// ════════════════════════════════════════════════════════════════════════════
 // MODULE 5 — PDF Backlink Classifier
 // ════════════════════════════════════════════════════════════════════════════
 

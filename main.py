@@ -17,6 +17,7 @@ from agent.graph import seo_agent
 from agent.niche_agent import run_niche_finder
 from agent.serp_agent import run_serp_analyzer
 from agent.gap_agent import gap_agent
+from agent.backlink_search_agent import run_backlink_search
 from agent.pdf_agent import (
     CATEGORIES,
     CHUNK_SIZE,
@@ -203,6 +204,34 @@ async def gap_analysis(body: GapRequest) -> GapResponse:
         link_gaps=result["link_gaps"],
         content_gaps=result["content_gaps"],
         action_plan=result["action_plan"],
+    )
+
+
+# ---------------------------------------------------------------------------
+# Module 6 — Comprehensive Backlink Search
+# ---------------------------------------------------------------------------
+
+class BacklinkSearchRequest(BaseModel):
+    query: str
+
+
+class BacklinkSearchResponse(BaseModel):
+    query: str
+    results: list[dict]
+    total: int
+    error: str | None = None
+
+
+@app.post("/api/backlink-search", response_model=BacklinkSearchResponse, tags=["Module 6"])
+async def backlink_search(body: BacklinkSearchRequest) -> BacklinkSearchResponse:
+    """Run a comprehensive multi-angle search for backlink opportunities matching a query."""
+    result = await asyncio.to_thread(run_backlink_search, body.query)
+    if result.get("error"):
+        raise HTTPException(status_code=500, detail=result["error"])
+    return BacklinkSearchResponse(
+        query=result["query"],
+        results=result["results"],
+        total=result["total"],
     )
 
 
