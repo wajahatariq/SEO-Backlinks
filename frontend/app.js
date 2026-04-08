@@ -386,6 +386,66 @@ document.getElementById('input-domain').focus();
 // MODULE 6 — Comprehensive Backlink Search
 // ════════════════════════════════════════════════════════════════════════════
 
+const REL_COLOR = { High: 'pill-green', Medium: 'pill-yellow', Low: 'pill-gray' };
+const SEARCH_PAGE = 100;
+
+let searchAllResults  = [];
+let searchActiveRel   = 'all';
+let searchCurrentPage = 1;
+
+function searchFiltered() {
+  if (searchActiveRel === 'all') return searchAllResults;
+  return searchAllResults.filter(r => r.relevance === searchActiveRel);
+}
+
+function renderSearchTable() {
+  const filtered = searchFiltered();
+  const total    = filtered.length;
+  const start    = (searchCurrentPage - 1) * SEARCH_PAGE;
+  const page     = filtered.slice(start, start + SEARCH_PAGE);
+
+  document.getElementById('count-search').textContent =
+    searchActiveRel === 'all' ? `${total} total` : `${total} in filter`;
+
+  document.getElementById('tbody-search').innerHTML = page.length
+    ? page.map((r, i) => `<tr>
+        <td class="cell-num" style="color:var(--text-3)">${start + i + 1}</td>
+        <td class="cell-domain"><a href="${esc(r.url || '#')}" target="_blank" rel="noopener">${esc(r.domain || '—')}</a></td>
+        <td class="cell-num">${r.da_estimate ? fmt(r.da_estimate) : '—'}</td>
+        <td>${typePill(r.type)}</td>
+        <td><span class="pill ${REL_COLOR[r.relevance] || 'pill-gray'}">${esc(r.relevance || '—')}</span></td>
+        <td class="cell-muted">${esc(r.how_to_get || '—')}</td>
+        <td class="cell-url"><a href="${esc(r.url || '#')}" target="_blank" rel="noopener">Visit</a></td>
+      </tr>`).join('')
+    : `<tr><td colspan="7" style="text-align:center;padding:28px;color:var(--text-3)">No results in this filter.</td></tr>`;
+
+  renderSearchPagination(total);
+}
+
+function renderSearchPagination(total) {
+  const pages = Math.ceil(total / SEARCH_PAGE);
+  const pag   = document.getElementById('search-pagination');
+  if (pages <= 1) { pag.classList.add('hidden'); return; }
+  pag.classList.remove('hidden');
+  pag.innerHTML = `
+    <button class="pag-btn" id="sp-prev" ${searchCurrentPage === 1 ? 'disabled' : ''}>← Prev</button>
+    <span class="pag-info">Page ${searchCurrentPage} of ${pages} &nbsp;·&nbsp; ${total} items</span>
+    <button class="pag-btn" id="sp-next" ${searchCurrentPage >= pages ? 'disabled' : ''}>Next →</button>`;
+  document.getElementById('sp-prev').onclick = () => { if (searchCurrentPage > 1) { searchCurrentPage--; renderSearchTable(); } };
+  document.getElementById('sp-next').onclick = () => { if (searchCurrentPage < pages) { searchCurrentPage++; renderSearchTable(); } };
+}
+
+// Relevance filter buttons
+document.getElementById('search-filters').addEventListener('click', e => {
+  const btn = e.target.closest('.cat-filter-btn');
+  if (!btn) return;
+  document.querySelectorAll('#search-filters .cat-filter-btn').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  searchActiveRel   = btn.dataset.rel;
+  searchCurrentPage = 1;
+  renderSearchTable();
+});
+
 document.getElementById('form-search').addEventListener('submit', async e => {
   e.preventDefault();
   clearError('err-search');
@@ -396,6 +456,20 @@ document.getElementById('form-search').addEventListener('submit', async e => {
   setLoading('btn-search', null, null, true, 'Search Backlinks');
   document.getElementById('results-search').classList.add('hidden');
 
+  // Show progress bar
+  const prog = document.getElementById('search-progress');
+  prog.classList.remove('hidden');
+  document.getElementById('search-status').textContent  = 'Running 45 searches across all angles…';
+  document.getElementById('search-counter').textContent = '';
+  document.getElementById('search-detail').textContent  = 'Generating query set → searching concurrently → extracting list pages → enriching results…';
+  document.getElementById('search-bar').classList.add('indeterminate');
+
+  searchAllResults  = [];
+  searchActiveRel   = 'all';
+  searchCurrentPage = 1;
+  document.querySelectorAll('#search-filters .cat-filter-btn').forEach(b => b.classList.remove('active'));
+  document.querySelector('#search-filters .cat-filter-btn[data-rel="all"]').classList.add('active');
+
   try {
     const res = await fetch(`${API_BASE}/api/backlink-search`, {
       method: 'POST',
@@ -405,31 +479,23 @@ document.getElementById('form-search').addEventListener('submit', async e => {
     const data = await res.json();
     if (!res.ok) throw new Error(data.detail || `Error ${res.status}`);
 
-    const results = data.results || [];
-    document.getElementById('count-search').textContent = `${results.length} found`;
+    searchAllResults = data.results || [];
 
-    const relColor = { High: 'pill-green', Medium: 'pill-yellow', Low: 'pill-gray' };
-
-    document.getElementById('tbody-search').innerHTML = results.length
-      ? results.map((r, i) => `<tr>
-          <td class="cell-num" style="color:var(--text-3)">${i + 1}</td>
-          <td class="cell-domain"><a href="${esc(r.url || '#')}" target="_blank" rel="noopener">${esc(r.domain || '—')}</a></td>
-          <td class="cell-num">${r.da_estimate ? fmt(r.da_estimate) : '—'}</td>
-          <td>${typePill(r.type)}</td>
-          <td><span class="pill ${relColor[r.relevance] || 'pill-gray'}">${esc(r.relevance || '—')}</span></td>
-          <td class="cell-muted">${esc(r.how_to_get || '—')}</td>
-          <td class="cell-url"><a href="${esc(r.url || '#')}" target="_blank" rel="noopener" title="${esc(r.url || '')}">Visit</a></td>
-        </tr>`).join('')
-      : `<tr><td colspan="7" style="text-align:center;padding:28px;color:var(--text-3)">No results found.</td></tr>`;
+    document.getElementById('search-status').textContent  = `Complete — ${searchAllResults.length} unique backlinks found`;
+    document.getElementById('search-bar').classList.remove('indeterminate');
+    document.getElementById('search-bar').style.width = '100%';
+    document.getElementById('search-detail').textContent  = `Sorted by relevance and DA. Use filters or export all as CSV.`;
 
     const exportBtn = document.getElementById('export-search');
     exportBtn.classList.remove('hidden');
-    exportBtn.onclick = () => exportCSV(results, `backlink-search-${query.replace(/\s+/g, '-')}.csv`);
+    exportBtn.onclick = () => exportCSV(searchAllResults, `backlink-search-${query.replace(/\s+/g, '-')}.csv`);
 
+    renderSearchTable();
     document.getElementById('results-search').classList.remove('hidden');
     document.getElementById('results-search').scrollIntoView({ behavior: 'smooth', block: 'start' });
 
   } catch (err) {
+    prog.classList.add('hidden');
     showError('err-search', err.message);
   } finally {
     setLoading('btn-search', null, null, false, 'Search Backlinks');

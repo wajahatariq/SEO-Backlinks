@@ -261,7 +261,7 @@
     <section class="tab-pane" id="tab-search">
       <div class="pane-hero">
         <h1>Backlink Search</h1>
-        <p>Enter any query — niche, topic, or keyword set — and the agent fires 7 targeted searches to surface the most comprehensive list of backlink opportunities possible.</p>
+        <p>Enter any niche, topic, or keyword. The agent fires <strong>45 targeted searches</strong> across every angle — guest posts, directories, forums, resource pages, list pages — and mines each for the maximum number of unique backlink opportunities.</p>
         <form class="search-form" id="form-search" novalidate>
           <div class="input-group">
             <svg class="input-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
@@ -273,6 +273,18 @@
           </button>
         </form>
         <p class="error-msg hidden" id="err-search"></p>
+      </div>
+
+      <!-- Search progress indicator -->
+      <div class="progress-section hidden" id="search-progress">
+        <div class="progress-header">
+          <span class="progress-status" id="search-status">Running 45 searches across all angles…</span>
+          <span class="progress-counter" id="search-counter"></span>
+        </div>
+        <div class="progress-bar-track">
+          <div class="progress-bar-fill indeterminate" id="search-bar"></div>
+        </div>
+        <p class="progress-detail" id="search-detail">Generating query set → searching concurrently → extracting list pages → enriching results…</p>
       </div>
 
       <div id="results-search" class="results hidden">
@@ -287,12 +299,22 @@
               <button class="btn-export hidden" id="export-search">Export CSV</button>
             </div>
           </div>
+
+          <!-- Filters -->
+          <div class="cat-filters" id="search-filters">
+            <button class="cat-filter-btn active" data-rel="all">All</button>
+            <button class="cat-filter-btn" data-rel="High">High Relevance</button>
+            <button class="cat-filter-btn" data-rel="Medium">Medium</button>
+            <button class="cat-filter-btn" data-rel="Low">Low</button>
+          </div>
+
           <div class="table-wrapper">
             <table>
               <thead><tr><th>#</th><th>Domain</th><th>DA</th><th>Type</th><th>Relevance</th><th>How to Get It</th><th>URL</th></tr></thead>
               <tbody id="tbody-search"></tbody>
             </table>
           </div>
+          <div class="pagination hidden" id="search-pagination"></div>
         </div>
       </div>
     </section>
